@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>粉橘系照片風格模板編輯器</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons CDN -->
+    <script src="https://unpkg.com/lucide@0.344.0/dist/umd/lucide.min.js"></script>
+    <!-- React & Babel CDN -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap');
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #fff5f0;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #fed7aa;
+            border-radius: 10px;
+        }
+        /* 修正圖示垂直對齊 */
+        i.lucide {
+            display: inline-block;
+            vertical-align: middle;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useRef, useEffect } = React;
+
+        // 修正後的 Icon 組件：使用 lucide.createIcons
+        const Icon = ({ name, size = 24, className = "" }) => {
+            const iconRef = useRef(null);
+            
+            useEffect(() => {
+                if (window.lucide) {
+                    window.lucide.createIcons();
+                }
+            }, [name]);
+
+            // Lucide CDN 模式下，它是尋找帶有 data-lucide 屬性的標籤
+            return (
+                <i 
+                    data-lucide={name.toLowerCase().replace(/([a-z0-9]|(?=[A-Z]))([A-Z])/g, '$1-$2').toLowerCase()} 
+                    style={{ width: size, height: size }}
+                    className={`lucide ${className}`}
+                ></i>
+            );
+        };
+
+        const App = () => {
+            // 基礎狀態
+            const [mainImage, setMainImage] = useState(null);
+            const [aspectRatio, setAspectRatio] = useState('1/1');
+            const [template, setTemplate] = useState('none');
+            const [text, setText] = useState('');
+            const [fontFamily, setFontFamily] = useState('sans-serif');
+            const [stickers, setStickers] = useState([]);
+            const [activeSticker, setActiveSticker] = useState(null);
+
+            // IG 專用狀態
+            const [igAvatar, setIgAvatar] = useState(null);
+            const [username, setUsername] = useState('Sweet_Moment');
+            const [igCaption, setIgCaption] = useState('今天的心情是橘色的。');
+            const [igHashtag, setIgHashtag] = useState('#生活 #日常');
+
+            // 拍立得專用狀態
+            const [polaroidDate, setPolaroidDate] = useState('2024-03-26');
+
+            const containerRef = useRef(null);
+
+            // 處理上傳
+            const handleFileUpload = (e, setter) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (event) => setter(event.target.result);
+                    reader.readAsDataURL(file);
+                }
+            };
+
+            const handleStickerUpload = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (event) => {
+                        const newSticker = {
+                            id: Date.now(),
+                            src: event.target.result,
+                            x: 50,
+                            y: 50,
+                            size: 80
+                        };
+                        setStickers([...stickers, newSticker]);
+                    };
+                    reader.readAsDataURL(file);
+                }
+            };
+
+            // 拖拽邏輯
+            const handleMouseDown = (id) => setActiveSticker(id);
+            const handleMouseMove = (e) => {
+                if (activeSticker === null) return;
+                const rect = containerRef.current.getBoundingClientRect();
+                const x = ((e.clientX - rect.left) / rect.width) * 100;
+                const y = ((e.clientY - rect.top) / rect.height) * 100;
+                setStickers(stickers.map(s => s.id === activeSticker ? { ...s, x, y } : s));
+            };
+            const handleMouseUp = () => setActiveSticker(null);
+
+            const getAspectRatioClass = () => {
+                if (aspectRatio === '1/1') return 'aspect-square';
+                if (aspectRatio === '9/16') return 'aspect-[9/16]';
+                if (aspectRatio === '4/3') return 'aspect-[4/3]';
+                return 'aspect-square';
+            };
+
+            const downloadImage = () => {
+                const msg = document.createElement('div');
+                msg.className = "fixed top-10 left-1/2 -translate-x-1/2 bg-[#ff7e5f] text-white px-6 py-3 rounded-full shadow-lg z-[100] font-bold";
+                msg.innerText = "正在準備您的作品... (建議使用截圖保存以獲取最高畫質)";
+                document.body.appendChild(msg);
+                setTimeout(() => msg.remove(), 3000);
+            };
+
+            return (
+                <div className="min-h-screen p-4 md:p-8 text-[#4a3a35]">
+                    <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        
+                        {/* 左側控制區 */}
+                        <div className="lg:col-span-1 space-y-6 bg-white/80 backdrop-blur-sm p-6 rounded-3xl shadow-xl shadow-orange-100 border border-orange-50 overflow-y-auto max-h-[90vh] custom-scrollbar">
+                            <h1 className="text-2xl font-bold text-[#ff7e5f] mb-6 flex items-center gap-2">
+                                <Icon name="camera" size={28} /> 照片模板編輯器
+                            </h1>
+
+                            <section className="bg-[#fff9f6] p-4 rounded-2xl border border-orange-100">
+                                <label className="text-xs font-bold text-[#8c746b] uppercase mb-3 block tracking-widest">Step 0. 載入主要照片</label>
+                                <label className="w-full flex flex-col items-center justify-center gap-2 bg-white hover:bg-orange-50 text-[#ff7e5f] py-8 rounded-xl cursor-pointer border-2 border-dashed border-orange-200 transition-all group">
+                                    {mainImage ? (
+                                        <div className="text-center">
+                                            <Icon name="image" className="mx-auto mb-1 text-orange-300" size={28} />
+                                            <span className="text-xs font-medium text-[#8c746b]">點擊更換主要照片</span>
+                                        </div>
+                                    ) : (
+                                        <div className="text-center">
+                                            <Icon name="maximize" className="mx-auto mb-1 group-hover:scale-110 transition-transform" size={28} />
+                                            <span className="text-sm font-bold">點擊這裡上傳照片</span>
+                                        </div>
+                                    )}
+                                    <input type="file" className="hidden" accept="image/*" onChange={(e) => handleFileUpload(e, setMainImage)} />
+                                </label>
+                            </section>
+
+                            <section>
+                                <label className="text-xs font-bold text-[#8c746b] uppercase mb-3 block tracking-widest">Step 1. 調整比例</label>
+                                <div className="grid grid-cols-3 gap-2">
+                                    {[ {label: '1:1', val: '1/1'}, {label: '9:16', val: '9/16'}, {label: '4:3', val: '4/3'} ].map(opt => (
+                                        <button 
+                                            key={opt.val}
+                                            onClick={() => setAspectRatio(opt.val)}
+                                            className={`py-2 rounded-xl border text-sm transition-all ${aspectRatio === opt.val ? 'bg-[#ff7e5f] border-[#ff7e5f] text-white shadow-lg' : 'bg-white border-orange-100 text-[#8c746b] hover:border-orange-300'}`}
+                                        >
+                                            {opt.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </section>
+
+                            <section>
+                                <label className="text-xs font-bold text-[#8c746b] uppercase mb-3 block tracking-widest">Step 2. 套用模板</label>
+                                <div className="grid grid-cols-2 gap-2">
+                                    {[
+                                        { id: 'none', label: '原圖無框' },
+                                        { id: 'ig', label: 'IG 貼文風' },
+                                        { id: 'film', label: '復古底片' },
+                                        { id: 'polaroid', label: '文青拍立得' },
+                                        { id: 'sticky', label: '手感便利貼' }
+                                    ].map(tmp => (
+                                        <button 
+                                            key={tmp.id}
+                                            onClick={() => setTemplate(tmp.id)}
+                                            className={`py-2 px-3 rounded-xl border text-sm transition-all ${template === tmp.id ? 'bg-[#ff7e5f] border-[#ff7e5f] text-white shadow-lg' : 'bg-white border-orange-100 text-[#8c746b] hover:border-orange-300'}`}
+                                        >
+                                            {tmp.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </section>
+
+                            <section className="space-y-4 bg-[#fff9f6] p-4 rounded-2xl border border-orange-100">
+                                <label className="text-xs font-bold text-[#8c746b] uppercase block tracking-widest">Step 3. 精細化設定</label>
+                                
+                                {template === 'ig' ? (
+                                    <div className="space-y-3">
+                                        <div className="space-y-1">
+                                            <label className="text-[11px] font-bold text-[#8c746b]">帳號名稱</label>
+                                            <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} className="w-full p-2 border border-orange-100 rounded-lg text-sm outline-none focus:border-[#ff7e5f]" />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[11px] font-bold text-[#8c746b]">文案 (限20字)</label>
+                                            <input type="text" maxLength={20} value={igCaption} onChange={(e) => setIgCaption(e.target.value)} className="w-full p-2 border border-orange-100 rounded-lg text-sm outline-none focus:border-[#ff7e5f]" />
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-1">
+                                        <label className="text-[11px] font-bold text-[#8c746b]">標語文字</label>
+                                        <input type="text" value={text} onChange={(e) => setText(e.target.value)} className="w-full p-2 border border-orange-100 rounded-lg text-sm outline-none" placeholder="輸入文字..." />
+                                    </div>
+                                )}
+                                
+                                {template === 'polaroid' && (
+                                    <div className="space-y-1">
+                                        <label className="text-[11px] font-bold text-[#8c746b]">紀錄日期</label>
+                                        <div className="flex items-center gap-2 bg-white p-2 border border-orange-100 rounded-lg">
+                                            <Icon name="calendar" size={14} className="text-orange-300" />
+                                            <input type="date" value={polaroidDate} onChange={(e) => setPolaroidDate(e.target.value)} className="w-full outline-none text-sm text-[#4a3a35]" />
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="flex flex-wrap gap-2 pt-2 border-t border-orange-100">
+                                    {['sans-serif', 'serif', 'cursive', 'monospace'].map(f => (
+                                        <button key={f} onClick={() => setFontFamily(f)} className={`px-3 py-1 text-[10px] rounded-full border transition-all ${fontFamily === f ? 'bg-[#8c746b] text-white border-[#8c746b]' : 'bg-white text-[#8c746b] border-orange-100 hover:border-orange-300'}`} style={{ fontFamily: f }}>
+                                            {f === 'sans-serif' ? '黑體' : f === 'serif' ? '襯線' : f === 'cursive' ? '手寫' : '打字'}
+                                        </button>
+                                    ))}
+                                </div>
+                            </section>
+
+                            <section>
+                                <label className="text-xs font-bold text-[#8c746b] uppercase mb-3 block tracking-widest">Step 4. 裝飾貼紙</label>
+                                <div className="flex items-center gap-2">
+                                    <label className="flex-1 flex items-center justify-center gap-2 bg-[#fff9f6] hover:bg-orange-50 py-3 rounded-xl cursor-pointer border border-orange-100 transition-all text-[#8c746b]">
+                                        <Icon name="sticker" size={16} />
+                                        <span className="text-xs font-bold">上傳貼紙</span>
+                                        <input type="file" className="hidden" accept="image/*" onChange={handleStickerUpload} />
+                                    </label>
+                                    <button onClick={() => setStickers([])} className="p-3 text-orange-400 hover:bg-orange-50 rounded-xl transition-all"><Icon name="trash-2" size={20} /></button>
+                                </div>
+                            </section>
+                        </div>
+
+                        {/* 右側預覽區 */}
+                        <div className="lg:col-span-2 flex flex-col gap-6">
+                            <div className="bg-white/80 backdrop-blur-sm p-5 rounded-3xl shadow-sm border border-orange-50 flex items-center justify-between">
+                                <h2 className="text-lg font-bold flex items-center gap-2 text-[#4a3a35]"><Icon name="layout" size={20} className="text-[#ff7e5f]"/> 作品預覽區</h2>
+                                <button onClick={downloadImage} className="flex items-center gap-2 bg-[#ff7e5f] hover:bg-[#ff6a45] text-white px-8 py-2.5 rounded-full transition-all hover:shadow-lg hover:shadow-orange-200 font-bold active:scale-95">
+                                    <Icon name="download" size={18} /> 下載作品
+                                </button>
+                            </div>
+
+                            <div className="flex-1 flex items-center justify-center bg-[#ffe8db] rounded-[40px] overflow-hidden p-6 md:p-14 min-h-[600px] shadow-inner">
+                                <div 
+                                    ref={containerRef}
+                                    onMouseMove={handleMouseMove}
+                                    onMouseUp={handleMouseUp}
+                                    onMouseLeave={handleMouseUp}
+                                    className={`relative bg-white shadow-[0_20px_50px_rgba(255,126,95,0.15)] transition-all duration-500 overflow-hidden ${getAspectRatioClass()} w-full max-w-[480px] flex flex-col`}
+                                    style={{
+                                        padding: template === 'polaroid' ? '14px 14px 70px 14px' : template === 'ig' ? '56px 0px 0px 0px' : template === 'sticky' ? '30px' : '0px',
+                                        backgroundColor: template === 'sticky' ? '#fef9c3' : '#fff',
+                                        borderRadius: template === 'polaroid' ? '2px' : (template === 'none' ? '0' : '16px')
+                                    }}
+                                >
+                                    {template === 'ig' && (
+                                        <div className="absolute top-0 left-0 w-full p-3 flex items-center justify-between z-10 bg-white border-b border-orange-50">
+                                           <div className="flex items-center gap-2">
+                                             <label className="relative w-9 h-9 rounded-full bg-orange-50 border border-orange-100 cursor-pointer overflow-hidden flex items-center justify-center group shadow-inner">
+                                                {igAvatar ? <img src={igAvatar} className="w-full h-full object-cover" /> : <Icon name="user" size={14} className="text-orange-300" />}
+                                                <input type="file" className="hidden" accept="image/*" onChange={(e) => handleFileUpload(e, setIgAvatar)} />
+                                             </label>
+                                             <span className="text-sm font-bold text-[#4a3a35] tracking-tight">{username}</span>
+                                           </div>
+                                        </div>
+                                    )}
+
+                                    {template === 'film' && (
+                                        <div className="absolute inset-0 flex flex-col justify-between pointer-events-none z-10">
+                                            <div className="h-6 bg-[#2a2422] flex justify-around items-center px-4">
+                                                {[...Array(10)].map((_, i) => <div key={i} className="w-3.5 h-3.5 bg-white/10 rounded-sm"></div>)}
+                                            </div>
+                                            <div className="h-6 bg-[#2a2422] flex justify-around items-center px-4">
+                                                {[...Array(10)].map((_, i) => <div key={i} className="w-3.5 h-3.5 bg-white/10 rounded-sm"></div>)}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="relative flex-1 w-full h-full overflow-hidden flex items-center justify-center bg-[#fdf2ed]">
+                                        {mainImage ? (
+                                            <img src={mainImage} className={`w-full h-full object-cover transition-all duration-700 ${template === 'film' ? 'grayscale-[0.15] sepia-[0.15] contrast-110' : ''}`} />
+                                        ) : (
+                                            <div className="text-orange-200 flex flex-col items-center gap-3">
+                                                <Icon name="image" size={50} className="opacity-40 animate-pulse" />
+                                                <p className="text-xs font-bold tracking-widest text-orange-300">WAITING FOR PHOTO</p>
+                                            </div>
+                                        )}
+                                        {text && (template === 'none' || template === 'film') && (
+                                            <div className="absolute bottom-6 w-full text-center px-4 pointer-events-none" style={{ fontFamily, color: '#fff', fontSize: '1.25rem', textShadow: '0 2px 8px rgba(0,0,0,0.5)' }}>{text}</div>
+                                        )}
+                                    </div>
+
+                                    {template === 'ig' && (
+                                        <div className="bg-white w-full p-4 pt-3 space-y-2 z-10">
+                                            <div className="flex items-center justify-between mb-1">
+                                                <div className="flex items-center gap-4 text-[#4a3a35]">
+                                                    <Icon name="heart" size={26} className="text-[#ff7e5f]" />
+                                                    <Icon name="message-circle" size={26} />
+                                                    <Icon name="send" size={26} />
+                                                </div>
+                                                <Icon name="bookmark" size={26} />
+                                            </div>
+                                            <div className="text-sm font-bold text-[#4a3a35]">5,201 個讚</div>
+                                            <div className="text-sm text-[#4a3a35]">
+                                                <span className="font-bold mr-2">{username}</span>
+                                                <span style={{ fontFamily }}>{igCaption}</span>
+                                                <div className="text-[#ff7e5f] font-medium mt-0.5">{igHashtag}</div>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {template === 'polaroid' && (
+                                        <div className="w-full flex flex-col items-center justify-center pt-4 pb-6 px-4">
+                                            <div className="text-center w-full truncate" style={{ fontFamily, fontSize: '1.5rem', color: '#4a3a35' }}>{text || "Beautiful Day"}</div>
+                                            <div className="text-[11px] text-orange-300 mt-2 font-mono tracking-widest">{polaroidDate.split('-').join(' / ')}</div>
+                                        </div>
+                                    )}
+
+                                    {template === 'sticky' && text && (
+                                        <div className="absolute inset-0 flex items-center justify-center text-center p-8 pointer-events-none" style={{ fontFamily, fontSize: '1.4rem', color: '#854d0e' }}>{text}</div>
+                                    )}
+
+                                    {stickers.map(s => (
+                                        <div key={s.id} onMouseDown={() => handleMouseDown(s.id)} className={`absolute cursor-move z-40 ${activeSticker === s.id ? 'ring-2 ring-[#ff7e5f] rounded-lg' : ''}`} style={{ left: `${s.x}%`, top: `${s.y}%`, width: `${s.size}px`, transform: 'translate(-50%, -50%)' }}>
+                                            <img src={s.src} className="w-full h-auto select-none pointer-events-none drop-shadow-md" />
+                                        </div>
+                                    ))}
+                                    
+                                    {template === 'sticky' && (
+                                        <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/3 w-32 h-9 bg-orange-200/40 rotate-1 z-30 shadow-sm border-x border-white/30 backdrop-blur-[1px]"></div>
+                                    )}
+                                </div>
+                            </div>
+                            
+                            <div className="flex items-center justify-center gap-6 text-[11px] text-[#8c746b] bg-white/60 py-3 rounded-3xl border border-orange-50">
+                                <div className="flex items-center gap-2"><Icon name="move" size={14} className="text-[#ff7e5f]"/> 拖曳貼紙移動位置</div>
+                                <div className="flex items-center gap-2"><Icon name="user" size={14} className="text-[#ff7e5f]"/> 點擊 IG 頭像上傳照片</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
